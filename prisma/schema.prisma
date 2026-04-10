@@ -27,60 +27,88 @@ enum RequestStatus {
 model User {
   id                 String   @id @default(uuid())
   email              String   @unique
-  passwordHash       String   // BCrypt
+  passwordHash       String
   role               Role     @default(CLIENT)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
   investmentRequests InvestmentRequest[]
+  creditSimulations  CreditSimulation[]
 }
 
 model Institution {
   id        String   @id @default(uuid())
   name      String
-  logoUrl   String?  // URL pública del logo
+  logoUrl   String?
   ruc       String?
   contact   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  creditTypes CreditType[]
 }
 
 model CreditType {
   id                    String   @id @default(uuid())
-  name                  String   @unique // "Consumo", "Hipotecario", "Educación", etc.
+  name                  String   @unique
   minAmount             Float
   maxAmount             Float
-  annualInterestRate    Float    // Ej: 12.5 para 12.5%
-  amortizationSystems   String[] // ["FRENCH", "GERMAN"]
-  indirectCharges       IndirectCharge[]
+  annualInterestRate    Float
+  amortizationSystems   String[]
+  institutionId         String
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+
+  institution       Institution     @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  indirectCharges   IndirectCharge[]
+  simulations       CreditSimulation[]
 }
 
 model IndirectCharge {
   id           String     @id @default(uuid())
-  name         String     // "Seguro de Desgravamen", "SOLCA", "Donación Fundación"
+  name         String
   type         ChargeType @default(FIXED)
-  value        Float      // Monto fijo o porcentaje
-  mandatory    Boolean    @default(false) // SOLCA = true
+  value        Float
+  mandatory    Boolean    @default(false)
   creditTypeId String
-  creditType   CreditType @relation(fields: [creditTypeId], references: [id], onDelete: Cascade)
   createdAt    DateTime   @default(now())
+
+  creditType CreditType @relation(fields: [creditTypeId], references: [id], onDelete: Cascade)
+}
+
+model CreditSimulation {
+  id                 String   @id @default(uuid())
+  userId             String
+  creditTypeId       String
+  amount             Float
+  termMonths         Int
+  amortizationSystem String   // "FRENCH" o "GERMAN"
+  paymentSchedule    Json     // Tabla de pagos completa
+  totalPayment       Float
+  totalInterest      Float
+  totalCharges       Float    // Suma de cobros indirectos
+  createdAt          DateTime @default(now())
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  creditType CreditType @relation(fields: [creditTypeId], references: [id])
+
+  @@index([userId])
+  @@index([creditTypeId])
 }
 
 model InvestmentProduct {
-  id               String   @id @default(uuid())
-  name             String   // "Cuenta FLEX", "Plazo Fijo 12M", "Vacaciones", etc.
-  purpose          String?  // "estudio", "vacaciones", "ahorro", null para generales
-  minAmount        Float
-  maxAmount        Float
-  minTermMonths    Int
-  maxTermMonths    Int
-  annualRate       Float    // Tasa de rendimiento anual
-  allowOutOfMargin Boolean  @default(false) // Permite montos/plazos fuera de rango
-  capitalizationFreq String @default("MONTHLY") // MONTHLY, QUARTERLY, ANNUAL
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                 String   @id @default(uuid())
+  name               String
+  purpose            String?
+  minAmount          Float
+  maxAmount          Float
+  minTermMonths      Int
+  maxTermMonths      Int
+  annualRate         Float
+  allowOutOfMargin   Boolean  @default(false)
+  capitalizationFreq String   @default("MONTHLY")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   investmentRequests InvestmentRequest[]
 }
@@ -88,17 +116,39 @@ model InvestmentProduct {
 model InvestmentRequest {
   id              String         @id @default(uuid())
   userId          String
-  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   productId       String
-  product         InvestmentProduct @relation(fields: [productId], references: [id])
   amount          Float
   termMonths      Int
   status          RequestStatus  @default(PENDING)
-  biometricStatus String         @default("PENDING") // PENDING, VALIDATED_MOCK, FAILED
-  documents       String[]       // Rutas o URLs de los archivos subidos
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
-  @@index([userId])
-  @@index([productId])
+  user                User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product             InvestmentProduct   @relation(fields: [productId], references: [id])
+  documents           InvestmentDocument[]
+  biometricVerification BiometricVerification?
+}
+
+model InvestmentDocument {
+  id                String   @id @default(uuid())
+  investmentRequestId String
+  type              String   // "IDENTITY", "INCOME_PROOF", "BANK_STATEMENT"
+  fileUrl           String
+  uploadedAt        DateTime @default(now())
+
+  investmentRequest InvestmentRequest @relation(fields: [investmentRequestId], references: [id], onDelete: Cascade)
+
+  @@index([investmentRequestId])
+}
+
+model BiometricVerification {
+  id                String   @id @default(uuid())
+  investmentRequestId String  @unique
+  status            String   @default("PENDING") // PENDING, PROCESSING, SUCCESS, FAILED
+  modality          String   @default("FACE")    // FACE, FINGERPRINT, VOICE
+  metadata          Json?                        // Datos adicionales mock
+  verifiedAt        DateTime?
+  createdAt         DateTime @default(now())
+
+  investmentRequest InvestmentRequest @relation(fields: [investmentRequestId], references: [id], onDelete: Cascade)
 }
