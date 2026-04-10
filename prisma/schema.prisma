@@ -3,7 +3,102 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  CLIENT
+}
+
+enum ChargeType {
+  FIXED
+  PERCENTAGE
+}
+
+enum RequestStatus {
+  PENDING
+  DOCUMENTS_UPLOADED
+  BIOMETRIC_VALIDATED
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id                 String   @id @default(uuid())
+  email              String   @unique
+  passwordHash       String   // BCrypt
+  role               Role     @default(CLIENT)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  investmentRequests InvestmentRequest[]
+}
+
+model Institution {
+  id        String   @id @default(uuid())
+  name      String
+  logoUrl   String?  // URL pública del logo
+  ruc       String?
+  contact   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CreditType {
+  id                    String   @id @default(uuid())
+  name                  String   @unique // "Consumo", "Hipotecario", "Educación", etc.
+  minAmount             Float
+  maxAmount             Float
+  annualInterestRate    Float    // Ej: 12.5 para 12.5%
+  amortizationSystems   String[] // ["FRENCH", "GERMAN"]
+  indirectCharges       IndirectCharge[]
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model IndirectCharge {
+  id           String     @id @default(uuid())
+  name         String     // "Seguro de Desgravamen", "SOLCA", "Donación Fundación"
+  type         ChargeType @default(FIXED)
+  value        Float      // Monto fijo o porcentaje
+  mandatory    Boolean    @default(false) // SOLCA = true
+  creditTypeId String
+  creditType   CreditType @relation(fields: [creditTypeId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+}
+
+model InvestmentProduct {
+  id               String   @id @default(uuid())
+  name             String   // "Cuenta FLEX", "Plazo Fijo 12M", "Vacaciones", etc.
+  purpose          String?  // "estudio", "vacaciones", "ahorro", null para generales
+  minAmount        Float
+  maxAmount        Float
+  minTermMonths    Int
+  maxTermMonths    Int
+  annualRate       Float    // Tasa de rendimiento anual
+  allowOutOfMargin Boolean  @default(false) // Permite montos/plazos fuera de rango
+  capitalizationFreq String @default("MONTHLY") // MONTHLY, QUARTERLY, ANNUAL
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  investmentRequests InvestmentRequest[]
+}
+
+model InvestmentRequest {
+  id              String         @id @default(uuid())
+  userId          String
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId       String
+  product         InvestmentProduct @relation(fields: [productId], references: [id])
+  amount          Float
+  termMonths      Int
+  status          RequestStatus  @default(PENDING)
+  biometricStatus String         @default("PENDING") // PENDING, VALIDATED_MOCK, FAILED
+  documents       String[]       // Rutas o URLs de los archivos subidos
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([userId])
+  @@index([productId])
 }
