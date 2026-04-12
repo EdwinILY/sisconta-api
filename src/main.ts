@@ -11,6 +11,11 @@ async function bootstrap() {
   // Servir archivos estáticos desde la carpeta 'uploads' en la raíz del proyecto
   app.useStaticAssets(join(process.cwd(), 'uploads'), {
     prefix: '/uploads',
+    setHeaders: (res) => {
+      res.set('Access-Control-Allow-Origin', '*');
+      res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    },
   });
 
   app.enableCors({
